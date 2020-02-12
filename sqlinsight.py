@@ -1,6 +1,7 @@
+# codifica: utf-8
+
 """
-It parses and extract insightful metadata about SQL source files allowing
-them to be retrieved by from a new metadata database through SQL queries.
+Analizza ed eventualmente estra dati dai file sorgente SQL di una data cartella.
 """
 
 from elapsed import TimeIt
@@ -9,190 +10,164 @@ from typing import Any, List, Callable, Sequence, Optional as Opt
 from pathlib import Path
 from sys import argv, stderr
 from sqlparse import parse as parse_sql
+from sqlparse.sql import Statement
 from sqlparse.tokens import *
+from io import StringIO
 from os import walk
-from sqlinsight_data import build, Session, File, Unit, Statement
-from logging import getLogger, INFO, DEBUG
+from struttura import Session, File, Elemento, Dichiarazione
 
-version_major = 1
-version_minor = 0
-version_kind = 0
+versione_principale = 1
+versione_secondaria = 0
+tipo_versione = 0
 
 
-def author() -> str:
+def autore() -> str:
     """
-    It gets the authors string.
+    Ottiene la stringa che definisce l'autore.
 
-    :return: See description.
+    :return: Vedi la descrizione.
     :rtype str.
     """
     return '(c) 2020 Giovanni Lombardo mailto://g.lombardo@protonmail.com'
 
 
-def version() -> str:
+def versione() -> str:
     """
-    It builds and gets the version string.
+    Compone ed ottiene la stringa di versione.
 
-    :return: See description.
+    :return: Vedi la descrizione.
     :rtype: str.
     """
-    return f'{version_major}.{version_minor}.{version_kind}'
+    return f'{versione_principale}.{versione_secondaria}.{tipo_versione}'
 
 
-def usage(arguments: List[Any]) -> Namespace:
+def guida(argomenti: List[Any]) -> Namespace:
     """
-    It parses and validates command line arguments.
+    Interpreta la riga di comando.
 
-    :param arguments:    The command line arguments as retrieved from sys.argv.
-    :type arguments:     List[str].
+    :param argomenti:    Gli argomenti forniti da linea di comando come ricevuti da sys.argv.
+    :type argomenti:     List[str].
 
-    :return: The Namespace instance filled with the parsed and valid command line arguments.
-    :rtype: Namespace.
+    :return: La struttura Namespace contenente gli argomenti forniti da linea di comando.
+    :rtype: Namespace
     """
-    helps = dict(
-        location='The filesystem location where SQL source files are stored.',
-        encoding='The encoding to use for reading SQL source files.',
+    aiuto = dict(
+        posizione='La cartella in cui sono memorizzati i file SQL.',
+        modello='Il modello dei dati da ricercare.',
+        codifica='La codifica da utilizzare nella lettura dei file SQL.',
     )
 
-    parser = ArgumentParser(description=__doc__)
-    parser.add_argument('location', help=helps['location'])
-    parser.add_argument('-e', '--encoding', dest='encoding', default='utf-8', help=helps['encoding'])
-    arguments = parser.parse_args(arguments)
+    analizzatore = ArgumentParser(description=__doc__)
+    analizzatore.add_argument('posizione', help=aiuto['posizione'])
+    analizzatore.add_argument('modello', help=aiuto['modello'])
+    analizzatore.add_argument('-c', '--codifica', dest='codifica', default='utf-8', help=aiuto['codifica'])
 
-    location = Path(arguments.location)
+    argomenti = analizzatore.parse_args(argomenti)
 
-    if not location.exists():
-        stderr.write(f'The `location` argument must be an existing folder.')
+    percorso = Path(argomenti.posizione)
+
+    if not percorso.exists():
+        stderr.write(f'L\'argomento `posizione` deve essere una cartella esistente.')
         exit(1)
 
-    if not location.is_dir():
-        stderr.write(f'The `location` argument must be a folder.')
+    if not percorso.is_dir():
+        stderr.write(f'L\'argomento `posizione` deve essere una cartella.')
         exit(2)
 
-    arguments.location = location
-    return arguments
+    argomenti.posizione = percorso
+    return argomenti
 
 
-def acquire_sql_file(session: Session, element: File, encoding: str) -> None:
+def analizza(sessione: Session, elemento: File, codifica: str) -> None:
     """
-    It acquires metadata from the given file instance by using the givne encoding.
+    Analizza l'elemento dato utilizzando la codifica richiesta.
 
-    :param session:    The Session instance object.
-    :type session:     Session.
+    :param sessione:    L'oggetto sessione.
+    :type sessione:     Session.
 
-    :param element:    The File instance object pointing to SQL source file to be acquired.
-    :type element:     File.
+    :param elemento:    L'oggetto file da analizzare.
+    :type elemento:     File.
 
-    :param encoding:   The encoding to use while reading content from the SQL source file.
-    :type encoding:    str.
+    :param codifica:    La codifica da usare per leggere il file SQL.
+    :type codifica:     str.
 
-    :return: None
-    :rtype: None.
+    :return: Restituisce gli elementi trovati che rispettano il modello dato.
+    :rtype: str.
     """
-
-    def acquire_tokens(statement_id: int, current_item: Token) -> None:
-        """
-        It recursively acquires tokens belonging to the Statement instance with given statement_id from the given
-        current item.
-
-        :param statement_id:    The Statement instance object the current item belongs to.
-        :type statement_id:     int.
-
-        :param current_item:    The token to be acquired.
-        :type current_item:     Token.
-
-        :return: None.
-        :rtype: None.
-        """
-        for item in current_item.tokens:
-
-            # It skips whitespaces and punctuations
-            if item.is_whitespace or item.ttype == Punctuation:
-                getLogger(__name__).info(f'Skipping {item.ttype} from {statement_id}.')
-                continue
-
-            # The current token does not holds sub tokens
-            if not item.is_group:
-                unit = Unit(
-                    kind=str(item.ttype),
-                    value=item.value,
-                    statement=statement_id
-                )
-                session.add(unit)
-                session.commit()
-                continue
-
-            # The current token holds sub tokens
-            acquire_tokens(
-                statement_id=statement_id,
-                current_item=item
-            )
-
     try:
-        with open(element.path, 'r', encoding=encoding, errors='ignore') as d:
-            content = d.read()
+        with open(elemento.percorso, 'r', encoding=codifica, errors='ignore') as d:
+            contenuto = d.read()
 
-        # TokenList of sql.Statement objects
-        root = parse_sql(content, encoding=encoding)
+        # La variable dati_strutturati è una TokenList di oggetti di tipo Statement
+        dati_strutturati = parse_sql(contenuto, encoding=codifica)
 
-        # Iterating over each item in root we get Token instances. All available Token
-        # instances are declared in the source file sqlparse.tokens.
-        for stmt in root:
+        # Iterando su ciascun elemento dei dati strutturati si ottengono istanze di sotto
+        # classi di Token. Tutti i token possibili sono definiti in sqlparse.tokens. La
+        # classe base Token utilizza la tecnica della sovrascrittura di __getattr__ per
+        # creare nuovi membri e in definitiva nuovi token. Il token è una unità sintattica.
+        for dichiarazione in dati_strutturati:
+
             try:
-                statement_obj = Statement(
-                    name=stmt.get_name(),
-                    file=element.identifier
+                oggetto_dichiarazione = Dichiarazione(
+                    tipo=dichiarazione.get_name(),
+                    file=elemento.identificativo
                 )
-                session.add(statement_obj)
-                session.commit()
 
-                acquire_tokens(
-                    statement_id=statement_obj.identifier,
-                    current_item=stmt
-                )
+                sessione.add(oggetto_dichiarazione)
+                sessione.commit()
+
+                for unita_sintattica in dichiarazione.tokens:
+                    if unita_sintattica.is_whitespace:
+                        continue
+                    unita = Elemento(
+                        tipo=str(unita_sintattica.ttype),
+                        valore=unita_sintattica.value,
+                        dichiarazione=oggetto_dichiarazione.identificativo
+                    )
+
+                    sessione.add(unita)
+                    sessione.commit()
 
             except Exception as e:
                 print(str(e))
-                session.rollback()
+                sessione.rollback()
 
     except (IOError, OSError, Exception) as e:
-        stderr.write(f'Error reading `{element.path}`: {str(e)}')
+        stderr.write(f'Error reading `{elemento.percorso}`: {str(e)}')
 
 
-def main(arguments: Namespace) -> int:
+def inizio(argomenti: Namespace) -> int:
     """
-    The entry point of the custom application logic behaviour.
+    La procedura eseguita all'avvio del modulo.
 
-    :param arguments:   The parsed and validated command line arguments as retrieved from usage.
-    :type arguments:    Namespace.
+    :param argomenti:   Gli argomenti da linea di comando come ottenuti da guida().
+    :type argomenti:    Namespace.
 
-    :return: The value to pass to the OS to communicated how the process ended.
+    :return: Restituisce 0.
     :rtype: int.
     """
-    session = Session()
-    build()
-
-    for root, dirs, files in walk(str(arguments.location.absolute())):
+    sessione = Session()
+    for radice, cartelle, files in walk(str(argomenti.posizione.absolute())):
         for f in files:
             if f.endswith('.sql'):
-                path = Path(root) / f
-                full_name = str(path.absolute())
-                print(f'Reading: {full_name}')
-                file_instance = File(path=full_name)
-                session.add(file_instance)
-                session.commit()
-                acquire_sql_file(
-                    session=session,
-                    element=file_instance,
-                    encoding=arguments.encoding
+                percorso = Path(radice) / f
+                nome_completo = str(percorso.absolute())
+                print(f'Analizzando: {nome_completo}')
+                file_corrente = File(percorso=nome_completo)
+                sessione.add(file_corrente)
+                sessione.commit()
+                analizza(
+                    sessione,
+                    file_corrente,
+                    argomenti.codifica
                 )
 
-    session.commit()
+    sessione.commit()
     return 0
 
 
 if __name__ == '__main__':
-    print(author())
-    print(f'{str(Path(argv[0]).parts[-1])} version {version()}')
-    elapsed = TimeIt(lambda: main(usage(argv[1:])), logger_name=__name__)
-    exit(tuple(elapsed.return_values().values())[-1])
+    print(autore())
+    print(f'{str(Path(argv[0]).parts[-1])} version {versione()}')
+    trascorsi = TimeIt(lambda: inizio(guida(argv[1:])), logger_name=__name__)
+    exit(tuple(trascorsi.return_values().values())[-1])

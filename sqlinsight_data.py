@@ -5,13 +5,13 @@ from sqlalchemy import Column, Integer, String, ForeignKey
 from datetime import datetime
 from pathlib import Path
 
-DB_DTV = datetime.now().strftime('%Y%m%d%H%M%S')
+DB_DTV = datetime.now().strftime('%Y%M%D')
 CWD = Path(__file__).parent
 DB_NAME = 'metasql'
 DB_EXT = '.db'
 
 Base = declarative_base()
-meta_database_name = f'{DB_NAME}_{DB_DTV}{DB_EXT}'
+meta_database_name = f'{DB_NAME}_{DB_EXT}{DB_EXT}'
 engine = create_engine(
     f'sqlite:///{str((CWD / meta_database_name).absolute())}',
     echo=False
@@ -78,6 +78,5 @@ def build() -> None:
     :rtype: None.
     """
     Base.metadata.create_all(engine)
-
 
 

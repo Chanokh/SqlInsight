@@ -1,9 +1,17 @@
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, Integer, String, ForeignKey
+"""
+It defines the structure of the SQL metadata database.
+"""
+
+# Standard
 from datetime import datetime
 from pathlib import Path
+
+# Third party
+from sqlalchemy import create_engine
+from sqlalchemy import Column, Integer, String, ForeignKey
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+
 
 DB_DTV = datetime.now().strftime('%Y%m%d%H%M%S')
 CWD = Path(__file__).parent
@@ -42,8 +50,8 @@ class Statement(Base):
     # The id of the instance.
     identifier = Column(Integer, primary_key=True, autoincrement=True)
 
-    # The name of statement [DML names are usually table names].
-    name = Column(String, nullable=False)
+    # The content of statement.
+    content = Column(String, nullable=False)
 
     # The identifier of the file containing the statement.
     file = Column(Integer, ForeignKey('Files.identifier'), nullable=False)

@@ -7,12 +7,12 @@ from elapsed import TimeIt
 from argparse import ArgumentParser, Namespace
 from typing import Any, List, Callable, Sequence, Optional as Opt
 from pathlib import Path
-from sys import argv, stderr
+from sys import argv, stdout
 from sqlparse import parse as parse_sql
 from sqlparse.tokens import *
 from os import walk
 from sqlinsight_data import build, Session, File, Unit, Statement
-from logging import getLogger, INFO, DEBUG
+from logging import getLogger, basicConfig, INFO
 
 version_major = 1
 version_minor = 0
@@ -39,6 +39,28 @@ def version() -> str:
     return f'{version_major}.{version_minor}.{version_kind}'
 
 
+def logging_init(level: int = INFO, stream: int = stdout) -> None:
+    """
+    It initializes logging features.
+
+    :param level:       The logging level (INFO by default).
+    :type level:        int.
+
+    :param stream:      The stream (stdout by default).
+    :type stream:       int.
+
+    :return: None.
+    :rtype: None.
+    """
+    config = dict(
+        level=level,
+        stream=stream,
+        format=f'[%(levelname)s] [%(asctime)s.%(msecs)03d] %(message)s',
+    )
+
+    basicConfig(**config)
+
+
 def usage(arguments: List[Any]) -> Namespace:
     """
     It parses and validates command line arguments.
@@ -54,6 +76,7 @@ def usage(arguments: List[Any]) -> Namespace:
         encoding='The encoding to use for reading SQL source files.',
     )
 
+    logger = getLogger(__name__)
     parser = ArgumentParser(description=__doc__)
     parser.add_argument('location', help=helps['location'])
     parser.add_argument('-e', '--encoding', dest='encoding', default='utf-8', help=helps['encoding'])
@@ -62,11 +85,11 @@ def usage(arguments: List[Any]) -> Namespace:
     location = Path(arguments.location)
 
     if not location.exists():
-        stderr.write(f'The `location` argument must be an existing folder.')
+        logger.error(f'The `location` argument must be an existing folder.')
         exit(1)
 
     if not location.is_dir():
-        stderr.write(f'The `location` argument must be a folder.')
+        logger.error(f'The `location` argument must be a folder.')
         exit(2)
 
     arguments.location = location
@@ -89,6 +112,7 @@ def acquire_sql_file(session: Session, element: File, encoding: str) -> None:
     :return: None
     :rtype: None.
     """
+    logger = getLogger(__name__)
 
     def acquire_tokens(statement_id: int, current_item: Token) -> None:
         """
@@ -108,7 +132,7 @@ def acquire_sql_file(session: Session, element: File, encoding: str) -> None:
 
             # It skips whitespaces and punctuations
             if item.is_whitespace or item.ttype == Punctuation:
-                getLogger(__name__).info(f'Skipping {item.ttype} from {statement_id}.')
+                logger.debug(f'Skipping {item.ttype} from {statement_id}.')
                 continue
 
             # The current token does not holds sub tokens
@@ -152,11 +176,11 @@ def acquire_sql_file(session: Session, element: File, encoding: str) -> None:
                 )
 
             except Exception as e:
-                print(str(e))
+                logger.error(str(e))
                 session.rollback()
 
     except (IOError, OSError, Exception) as e:
-        stderr.write(f'Error reading `{element.path}`: {str(e)}')
+        logger.error(f'Error reading `{element.path}`: {str(e)}')
 
 
 def main(arguments: Namespace) -> int:
@@ -169,6 +193,7 @@ def main(arguments: Namespace) -> int:
     :return: The value to pass to the OS to communicated how the process ended.
     :rtype: int.
     """
+    logger = getLogger(__name__)
     session = Session()
     build()
 
@@ -177,7 +202,7 @@ def main(arguments: Namespace) -> int:
             if f.endswith('.sql'):
                 path = Path(root) / f
                 full_name = str(path.absolute())
-                print(f'Reading: {full_name}')
+                logger.info(f'Reading: {full_name}')
                 file_instance = File(path=full_name)
                 session.add(file_instance)
                 session.commit()
@@ -192,6 +217,7 @@ def main(arguments: Namespace) -> int:
 
 
 if __name__ == '__main__':
+    logging_init()
     print(author())
     print(f'{str(Path(argv[0]).parts[-1])} version {version()}')
     elapsed = TimeIt(lambda: main(usage(argv[1:])), logger_name=__name__)

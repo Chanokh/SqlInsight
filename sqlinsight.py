@@ -3,16 +3,22 @@ It parses and extract insightful metadata about SQL source files allowing
 them to be retrieved by from a new metadata database through SQL queries.
 """
 
-from elapsed import TimeIt
+# Standard
 from argparse import ArgumentParser, Namespace
-from typing import Any, List, Callable, Sequence, Optional as Opt
-from pathlib import Path
-from sys import argv, stdout
-from sqlparse import parse as parse_sql
-from sqlparse.tokens import *
-from os import walk
-from sqlinsight_data import build, Session, File, Unit, Statement
+from elapsed import TimeIt
 from logging import getLogger, basicConfig, INFO
+from os import walk
+from pathlib import Path
+from typing import Any, List
+from sys import argv, stdout
+
+# Third party
+from sqlparse.tokens import *
+from sqlparse import parse as parse_sql
+
+# Local
+from sqlinsight_data import build, Session, File, Unit, Statement
+
 
 version_major = 1
 version_minor = 0
@@ -55,7 +61,7 @@ def logging_init(level: int = INFO, stream: int = stdout) -> None:
     config = dict(
         level=level,
         stream=stream,
-        format=f'[%(levelname)s] [%(asctime)s.%(msecs)03d] %(message)s',
+        format=f'[%(levelname)s] [%(asctime)s] %(message)s',
     )
 
     basicConfig(**config)
@@ -143,8 +149,12 @@ def acquire_sql_file(session: Session, element: File, encoding: str) -> None:
                     statement=statement_id
                 )
                 session.add(unit)
-                session.commit()
                 continue
+
+            # Before recurring ensure all changes are committed [for performances reasons].
+            # The issue is that if one unit do not follows defined SQL schema rules the
+            # whole group of units added to the session will be lost.
+            session.commit()
 
             # The current token holds sub tokens
             acquire_tokens(
@@ -163,9 +173,21 @@ def acquire_sql_file(session: Session, element: File, encoding: str) -> None:
         # instances are declared in the source file sqlparse.tokens.
         for stmt in root:
             try:
+
+                normalized = stmt.normalized.strip()
+                if not stmt.ttype:
+                    if not stmt.is_group and normalized == '':
+                        continue
+                    content = normalized
+                else:
+                    content = stmt.get_name()
+
+                if not content:
+                    continue
+
                 statement_obj = Statement(
-                    name=stmt.get_name(),
-                    file=element.identifier
+                    file=element.identifier,
+                    content=content
                 )
                 session.add(statement_obj)
                 session.commit()

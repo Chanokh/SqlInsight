@@ -18,7 +18,7 @@ into a new `SQLite` database that can be queried at will. Here is the help:
 sqlinsight.py version 1.0.0
 usage: sqlinsight.py [-h] [-e ENCODING] location
 
-It parses and extract insightful metadata about SQL source files allowing them to be retrieved from a new metadata
+It parses and extract insightful metadata about SQL source files allowing them to be retrieved by from a new metadata
 database through SQL queries.
 
 positional arguments:

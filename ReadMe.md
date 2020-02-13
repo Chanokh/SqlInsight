@@ -1,7 +1,7 @@
 # SqlInsight
 
 ### Scope
-The mean of `SqlInsight` is to allow to querying the structured content of `SQL` 
+The mean of `SqlInsight` is to allow querying the structured content of `SQL` 
 source files by using the `DQL` part of the `SQL` language to retrieve insights
 about data and metadata of parsed `SQL` files.
 
@@ -18,8 +18,8 @@ into a new `SQLite` database that can be queried at will. Here is the help:
 sqlinsight.py version 1.0.0
 usage: sqlinsight.py [-h] [-e ENCODING] location
 
-It parses and extract insightful metadata about SQL source files allowing them to be retrieved from a new metadata
-database through SQL queries.
+It parses and extract insightful metadata about SQL source files allowing 
+them to be retrieved from a new metadata database through SQL queries.
 
 positional arguments:
   location              The filesystem location where SQL source files are stored.
@@ -32,7 +32,7 @@ optional arguments:
 
 ### How do I ..
 
-1. ... retrieve the number of statements of each `SQL` source file sorted by 
+- ... retrieve the **number of statements of each `SQL` source file** sorted by 
 ascending number of statements? 
  
 ```sql
@@ -40,7 +40,43 @@ SELECT
     Files.path, COUNT(*) AS NoStatements 
 FROM 
     Statements INNER JOIN Files ON 
-        Statements.file == Files.identifier 
+    Statements.file == Files.identifier 
 GROUP BY (file) 
 ORDER BY NoStatements;
 ```
+
+- ... retrieve the **`SQL` statements of a given kind** sorted by position and
+file they belong to? 
+
+```sql
+SELECT Files.path, Statements.identifier as row, Statements.content 
+FROM 
+	Units INNER JOIN Statements 
+		ON Units.statement = Statements.identifier 
+	INNER JOIN Files 
+		ON Statements.file = Files.identifier 
+WHERE
+	Units.kind LIKE '%Token.Keyword.DDL%' AND
+	Units.value LIKE '%CREATE%'
+
+ORDER BY
+	Files.identifier, Statements.identifier
+ASC;
+```
+
+- ... retrieve all **statements containing a literal (string, integer, etc.) 
+having a given value**?
+ 
+ ```sql
+SELECT Files.path, Units.kind, Units.value, Statements.content 
+FROM 
+	Units INNER JOIN Statements ON Units.statement = Statements.identifier 
+	INNER JOIN Files ON Statements.file = Files.identifier 
+WHERE
+	Units.kind LIKE '%Token.Literal.String.Single%' AND
+	Units.value LIKE '%config_set%'
+ORDER BY
+	Files.identifier
+ASC;
+```
+

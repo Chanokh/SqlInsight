@@ -5,7 +5,7 @@ from sqlalchemy import Column, Integer, String, ForeignKey
 from datetime import datetime
 from pathlib import Path
 
-DB_DTV = datetime.now().strftime('%Y%m%d')
+DB_DTV = datetime.now().strftime('%Y%m%d%H%M%S')
 CWD = Path(__file__).parent
 DB_NAME = 'metasql'
 DB_EXT = '.db'

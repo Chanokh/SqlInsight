@@ -1,7 +1,7 @@
 # SqlInsight
 
-### Scope
-The mean of `SqlInsight` is to allow querying the structured content of `SQL` 
+### Objective
+The objective of `SqlInsight` is to allow querying the structured content of `SQL` 
 source files by using the `DQL` part of the `SQL` language to retrieve insights
 about data and metadata of parsed `SQL` files.
 
